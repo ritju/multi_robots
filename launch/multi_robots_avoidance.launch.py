@@ -28,6 +28,8 @@ def generate_launch_description():
         namespace=namespace_name,
         output='screen',
         parameters=[params_file_path],
+        remappings=[("/tf", "/robot1/tf"),
+                    ("/tf_static", "/robot1/tf_static")],
     )
 
     launch_description.add_action(nav2_multi_robots_avoidance_node)
