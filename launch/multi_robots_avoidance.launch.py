@@ -15,21 +15,30 @@ def generate_launch_description():
     # get param file path
     params_file_path = os.path.join(multi_robots_pkg_path, 'param', 'config.yaml')   
 
-    
-    namespace_name = LaunchConfiguration("namespace_name")
-    namespace_name = "mk8"
+    namespace = LaunchConfiguration("namespace")
 
+    priority = 1
+    try:
+        if 'ROBOT_PRIORITY' in os.environ:
+            priority = int(os.environ.get('ROBOT_PRIORITY'))
+            print(f'get ROBOT_PRIORITY value {priority} from os.environment.')
+        else:
+            print('using default ROBOT_PRIORITY value 1')
+            priority = 1
+    except:
+        print("Please declare ROBOT_PRIORITY!")
+        priority = 1
 
     # multi_robots_avoidance Node
     nav2_multi_robots_avoidance_node = Node(
         executable='multi_robots_avoidance',
         package='nav2_multi_robots_avoidance',
         name='multi_robots_avoidance',
-        namespace=namespace_name,
+        namespace=namespace,
         output='screen',
-        parameters=[params_file_path],
-        remappings=[("/tf", "/robot1/tf"),
-                    ("/tf_static", "/robot1/tf_static")],
+        parameters=[params_file_path, {"use_sim_time": False, "priority": priority}],
+        remappings=[("/tf", "tf"),
+                    ("/tf_static", "tf_static")],
     )
 
     launch_description.add_action(nav2_multi_robots_avoidance_node)

@@ -53,13 +53,13 @@ namespace multi_robots_avoidance_action
         rclcpp::CallbackGroup::SharedPtr cb_group2 = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
         rclcpp::SubscriptionOptions sub_opt2 = rclcpp::SubscriptionOptions();
         sub_opt2.callback_group = cb_group2;
-        this->current_robot_controller_vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>("/cmd_vel_nav_", 10, std::bind(&MultiRobotsAvoidanceAction::current_robot_controller_vel_sub_callback_, this, _1), sub_opt2);
+        this->current_robot_controller_vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>("cmd_vel_nav_", 10, std::bind(&MultiRobotsAvoidanceAction::current_robot_controller_vel_sub_callback_, this, _1), sub_opt2);
 
         // pub for /plan_stamped
         this->new_plan_pub_ = this->create_publisher<capella_ros_msg::msg::PlanWithNamespace>("plan_stamped", 1);
 
         // sub for /plan 
-        this->current_robot_plan_sub_ = this->create_subscription<nav_msgs::msg::Path>("/plan", 1, std::bind(&MultiRobotsAvoidanceAction::current_robot_plan_sub_callback_, this, _1));
+        this->current_robot_plan_sub_ = this->create_subscription<nav_msgs::msg::Path>("plan", 1, std::bind(&MultiRobotsAvoidanceAction::current_robot_plan_sub_callback_, this, _1));
 
         this->other_robots_infos = this->get_higher_priority_robots_infos();
     }
@@ -72,7 +72,7 @@ namespace multi_robots_avoidance_action
     void MultiRobotsAvoidanceAction::init_params()
     {
         // declare params
-        this->declare_parameter<int>("pririty", 1);
+        this->declare_parameter<int>("priority", 0);
         this->declare_parameter<float>("collision_plan_check_threshold", 1.5);
         this->declare_parameter<float>("collision_radius_check_threshold", 3.0);
         this->declare_parameter<float>("global_pose_filter_threshold", 5.0);
@@ -85,7 +85,7 @@ namespace multi_robots_avoidance_action
         this->declare_parameter<float>("time_tolerance", 0.1);
 
         // get params
-        this->priority_                          = this->get_parameter_or<int>("priority", 1);
+        this->priority_                          = this->get_parameter_or<int>("priority", 0);
         this->collision_plan_check_threshold_    = this->get_parameter_or<float>("collision_plan_check_threshold", 1.5);
         this->collision_radius_check_threshold_  = this->get_parameter_or<float>("collision_radius_check_threshold", 3.0);
         this->global_pose_filter_threshold_      = this->get_parameter_or<float>("global_pose_filter_threshold", 5.0);
@@ -93,7 +93,7 @@ namespace multi_robots_avoidance_action
         this->robot_offline_timeout_             = this->get_parameter_or<float>("robot_offline_timeout",0.3);
         this->frequency_pub_pose_                = this->get_parameter_or<int>("frequency_pub_pose", 5);
         this->frequency_check_online_            = this->get_parameter_or<int>("frequency_check_online", 5);
-        this->frequency_pub_robot_info_            = this->get_parameter_or<int>("frequency_pub_robot_info", 5);
+        this->frequency_pub_robot_info_          = this->get_parameter_or<int>("frequency_pub_robot_info", 5);
         this->pose_and_plan_timeout_             = this->get_parameter_or<float>("pose_and_plan_timeout", 1.0);
         this->time_tolerance_                    = this->get_parameter_or<float>("time_tolerance", 0.1);
     }
@@ -125,6 +125,7 @@ namespace multi_robots_avoidance_action
             {
                 transform = tf_buffer_->lookupTransform( refFrame, childFrame, tf2::TimePointZero, tf2::durationFromSec(0.5));
                 this->robot_pose_.header = transform.header;
+                this->robot_pose_.header.stamp = this->get_clock()->now();
                 this->robot_pose_.pose.position.x = transform.transform.translation.x;
                 this->robot_pose_.pose.position.y = transform.transform.translation.y;
                 this->robot_pose_.pose.position.z = transform.transform.translation.z;
@@ -158,7 +159,7 @@ namespace multi_robots_avoidance_action
         std::lock_guard<mutex_t> guard(*getMutex());
         for (size_t i = 0; i < this->other_robots_infos.size(); i++)
         {
-            auto robot_info = this->other_robots_infos[i];
+            RobotInfos& robot_info = this->other_robots_infos[i];
             if (pose.namespace_name == robot_info.namespace_name)
             {
                 robot_info.pose = pose.pose;
@@ -202,36 +203,47 @@ namespace multi_robots_avoidance_action
     void MultiRobotsAvoidanceAction::higher_priority_robot_info_sub_callback_(const capella_ros_msg::msg::RobotInfo &robot_info)
     {
         std::lock_guard<mutex_t> guard(*getMutex());
-        bool need_stored = true;
-        
-        for (size_t i = 0; i < this->other_robots_infos.size(); i++)
+        bool need_stored = true;     
+
+        if ((this->other_robots_infos.size() == 0))
         {
-            if (robot_info.namespace_name == this->namespace_name_)
+            if (robot_info.priority > this->priority_)
             {
-                need_stored = false;
-            }
-            else if (robot_info.namespace_name == this->other_robots_infos[i].namespace_name)
-            {
-                need_stored = false;
-                this->other_robots_infos[i].time_last_detected = this->get_clock()->now();
+                need_stored = true;
             }
             else
             {
-                if (robot_info.priority > this->priority_)
+                need_stored = false;
+            }
+        }
+        else
+        {
+            for (size_t i = 0; i < this->other_robots_infos.size(); i++)
+            {
+                if (robot_info.namespace_name == this->namespace_name_)
                 {
-                    need_stored = true;
+                    need_stored = false;
+                    break;
+                }
+                else if (robot_info.namespace_name == this->other_robots_infos[i].namespace_name)
+                {
+                    need_stored = false;
+                    this->other_robots_infos[i].time_last_detected = this->get_clock()->now();
                     break;
                 }
                 else
                 {
-                    need_stored = false;
+                    if (robot_info.priority > this->priority_)
+                    {
+                        need_stored = true;
+                        break;
+                    }
+                    else
+                    {
+                        need_stored = false;
+                    }
                 }
             }
-        }
-
-        if ((this->other_robots_infos.size() == 0) && robot_info.namespace_name == this->namespace_name_)
-        {
-            need_stored = false;
         }
 
         if(need_stored)
@@ -247,7 +259,7 @@ namespace multi_robots_avoidance_action
 
             RCLCPP_INFO(this->get_logger(), "add subs for robot pose and new plan of %s.", robot_info.namespace_name.c_str());
 
-            auto pose_sub = this->create_subscription<capella_ros_msg::msg::RobotPoseWithNamespace>(ris.namespace_name + "robot_pose", 1,
+            auto pose_sub = this->create_subscription<capella_ros_msg::msg::RobotPoseWithNamespace>(ris.namespace_name + "/robot_pose", 1,
                 std::bind(&MultiRobotsAvoidanceAction::higher_priority_robot_pose_sub_callback_, this, _1)); 
             auto plan_sub = this->create_subscription<capella_ros_msg::msg::PlanWithNamespace>(ris.namespace_name + "/plan_stamped", 1,
                 std::bind(&MultiRobotsAvoidanceAction::higher_priority_robot_plan_sub_callback_, this, _1));
@@ -278,12 +290,34 @@ namespace multi_robots_avoidance_action
             this->collision_ = this->robot_collision_check(this->other_robots_infos[i]);
             if (this->collision_)
             {
+                RCLCPP_INFO_THROTTLE(get_logger(),*get_clock(), 1000, "collision occurs between %s and %s", this->namespace_name_.c_str(), other_robots_infos[i].namespace_name.c_str());
                 this->state_current_ = RobotState::WAITING;
-                if (this->state_current_ != this->state_last_)
-                {
-                    RCLCPP_INFO(get_logger(), "Robot state changed from %s to %s", (bool)this->state_last_?"FORWARDING":"WAITING", (bool)this->state_current_?"Fording":"WAITING");
-                }
                 break;
+            }
+            else
+            {
+                this->state_current_ = RobotState::FORWARDING;
+            }
+        }
+                        
+        if (this->state_current_ != this->state_last_)
+        {
+            RCLCPP_INFO(get_logger(), "Robot state changed from %s to %s", (bool)this->state_last_?"FORWARDING":"WAITING", (bool)this->state_current_?"Fording":"WAITING");
+        }
+
+        switch (this->state_current_)
+        {
+            case RobotState::WAITING:
+            {
+                RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "robot %s stop ...", this->namespace_name_.c_str());
+                cmd_vel_nav_pub_->publish(this->twist_zero_);
+                break;
+            }
+            case RobotState::FORWARDING:
+            default:
+            {
+                RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "robot %s fowarding ...", this->namespace_name_.c_str());
+                cmd_vel_nav_pub_->publish(this->twist_controller_);
             }
         }
 
@@ -297,22 +331,28 @@ namespace multi_robots_avoidance_action
 
         this->new_plan_output_.path = plan;
         this->new_plan_output_.namespace_name = this->namespace_name_;
+        this->new_plan_output_.path.header.stamp = this->get_clock()->now();
         this->new_plan_output_.path.poses[0].header.stamp = this->new_plan_output_.path.header.stamp;
+        this->new_plan_output_.path.poses[0].header.frame_id = plan.header.frame_id;
 
         for (size_t i = 1; i < plan.poses.size(); i++)
         {
+            this->new_plan_output_.path.poses[i].header.frame_id = plan.header.frame_id;
+            
             geometry_msgs::msg::Pose pose_start, pose_end;
             pose_start = this->new_plan_output_.path.poses[i-1].pose;
             pose_end = this->new_plan_output_.path.poses[i].pose;
             distance_delta = std::hypot(pose_end.position.y - pose_start.position.y, pose_end.position.x - pose_start.position.x);
 
             rclcpp::Time ros_time_pre, ros_time_updated;
-            ros_time_pre = plan.poses[i-1].header.stamp;
+            ros_time_pre = this->new_plan_output_.path.poses[i-1].header.stamp;
             time_delta = distance_delta / this->vel_x_max_;
             int seconds;
             unsigned int nanoseconds;
             if (time_delta < 1.0)
             {
+                // RCLCPP_DEBUG(get_logger(), "time_delta: %f", time_delta);
+                // RCLCPP_DEBUG(get_logger(), "time_pre.seconds: %f", ros_time_pre.seconds());
                 seconds = 0;
                 nanoseconds = static_cast<unsigned int>(time_delta * 1e9);
                 auto duration = rclcpp::Duration(seconds, nanoseconds);
@@ -339,6 +379,8 @@ namespace multi_robots_avoidance_action
     {
         // first check the timeliness of pose;
         auto now_time = this->get_clock()->now().seconds();
+        RCLCPP_DEBUG(get_logger(), "sec: %d, nanosec: %d", poseStamped_other.header.stamp.sec, poseStamped_other.header.stamp.nanosec);
+        RCLCPP_DEBUG(get_logger(), "pose.x: %f, pose.y: %f", poseStamped_other.pose.position.x, poseStamped_other.pose.position.y);
         auto pose_time = rclcpp::Time(poseStamped_other.header.stamp).seconds();
         float delta_time = std::abs(now_time - pose_time);
         if (delta_time > this->pose_and_plan_timeout_)
@@ -462,7 +504,28 @@ namespace multi_robots_avoidance_action
 
     bool MultiRobotsAvoidanceAction::robot_collision_check(RobotInfos robot_info)
     {     
-        return this->pose_filter(robot_info.namespace_name, robot_info.pose) && this->plan_filter(robot_info.namespace_name, robot_info.path);
+        bool ret = true;
+        bool bool_pose_filter, bool_plan_filter;
+        bool_pose_filter = this->pose_filter(robot_info.namespace_name, robot_info.pose);
+        bool_plan_filter = this->plan_filter(robot_info.namespace_name, robot_info.path);
+
+        if (bool_pose_filter)
+        {
+            RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000, "Robots's pose distance <= %f, need collision check.", this->global_pose_filter_threshold_);
+            RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000, "This robot %s's pose: (%f, %f)", 
+                this->namespace_name_.c_str(), this->robot_pose_.pose.position.x, this->robot_pose_.pose.position.y);
+            RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000, "Other robot %s's pose: (%f, %f)", 
+                robot_info.namespace_name.c_str(), robot_info.pose.pose.position.x, robot_info.pose.pose.position.y);
+
+        }
+
+        if (bool_plan_filter)
+        {
+            RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000, "Robots's plans trigger collision_check.");
+        }
+        
+        ret = ret && bool_pose_filter && bool_plan_filter;
+        return ret;
     }
 
     void MultiRobotsAvoidanceAction::timer_check_other_robots_online_state_callback_()
