@@ -534,7 +534,8 @@ namespace multi_robots_avoidance_action
         size_t size = this->other_robots_infos.size();
         if (size > 0)
         {
-            for (auto iter = this->other_robots_infos.begin(); iter != this->other_robots_infos.end(); iter++)
+            RCLCPP_INFO(get_logger(), "size: %zd", size);
+            for (auto iter = this->other_robots_infos.begin(); iter != this->other_robots_infos.end();)
             {
                 RobotInfos& robot_info = *iter;
                 auto now_time = this->get_clock()->now().seconds();
@@ -553,7 +554,11 @@ namespace multi_robots_avoidance_action
                     // delete vec for plan_subs
                     this->delete_element(namespace_name_delete, this->higher_priority_robot_plan_sub_vec_);
 
-                    this->other_robots_infos.erase(iter);
+                    iter = this->other_robots_infos.erase(iter);
+                }
+                else
+                {
+                    iter++;
                 }
             }
         }        
