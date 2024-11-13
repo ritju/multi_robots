@@ -534,7 +534,7 @@ namespace multi_robots_avoidance_action
         size_t size = this->other_robots_infos.size();
         if (size > 0)
         {
-            RCLCPP_INFO(get_logger(), "size: %zd", size);
+            // RCLCPP_INFO(get_logger(), "size: %zd", size);
             for (auto iter = this->other_robots_infos.begin(); iter != this->other_robots_infos.end();)
             {
                 RobotInfos& robot_info = *iter;
