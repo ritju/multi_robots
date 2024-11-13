@@ -233,7 +233,7 @@ namespace multi_robots_avoidance_action
                 }
                 else
                 {
-                    if (robot_info.priority > this->priority_)
+                    if ((robot_info.priority > this->priority_) &&(i == (this->other_robots_infos.size() - 1)))
                     {
                         need_stored = true;
                         break;
