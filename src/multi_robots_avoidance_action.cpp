@@ -205,6 +205,7 @@ namespace multi_robots_avoidance_action
             {
                 robot_info.path = plan.path;
                 robot_info.time_last_detected = this->get_clock()->now();
+                robot_info.time_last_detected_plan = robot_info.time_last_detected;
 
                 double now_time = rclcpp::Time(robot_info.time_last_detected).seconds();
                 double plan_time = rclcpp::Time(plan.path.header.stamp).seconds();
@@ -454,99 +455,133 @@ namespace multi_robots_avoidance_action
 
     bool MultiRobotsAvoidanceAction::plan_filter(std::string namespace_name, nav_msgs::msg::Path plan_other)
     {
-        RCLCPP_DEBUG(get_logger(), "plan_filter begin");   
+        RCLCPP_INFO(get_logger(), "plan_filter begin");   
         bool ret = false;
         // fix bug when plan's poses size is 0
         if (plan_other.poses.size() == 0)
         {
-            RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000, "Robot %s's plan is empty, just wait.", namespace_name.c_str());
-            return true;
+            RCLCPP_INFO(get_logger(), "Robot %s's plan is empty, ignore ...", namespace_name.c_str());
+            RCLCPP_INFO(get_logger(), "plan_filter end1"); 
+            return false;
         }
         
         float distance_updated = 0.0;
         float distance_delta = 0.0;
         float distance_to_updated = this->collision_plan_check_threshold_;
         
-        auto plan_current = this->new_plan_output_.path;
-        auto poses = plan_current.poses;
+        auto poses_current = this->new_plan_output_.path.poses;
+        if (poses_current.size() == 0)
+        {
+            RCLCPP_INFO(get_logger(), "Current robot's plan is empty, just wait.");
+            RCLCPP_INFO(get_logger(), "plan_filter end2"); 
+            return true;
+        }
         geometry_msgs::msg::PoseStamped pose_cur_start, pose_cur_end;
         geometry_msgs::msg::PoseStamped pose_other_compare;
-        // RCLCPP_INFO(get_logger(), "plan size: %zd", plan_other.poses.size());
-        pose_cur_start = poses[0];
 
+        RCLCPP_INFO(get_logger(), "-1");
+        pose_cur_start = poses_current[0];
+        RCLCPP_INFO(get_logger(), "0");
         double time_delta_min = std::numeric_limits<double>::max();
-        size_t index_i = -1, index_j = -1;
+        
+        size_t delta_i = 0, delta_j = 0;
+        size_t size_i = poses_current.size(), size_j = plan_other.poses.size();
 
         std::vector<std::pair<size_t, size_t>> compare_index_vec;
-
-        for (size_t i = index_i + 1; (i < poses.size()) && (distance_updated < distance_to_updated); i++)
+        for (size_t i = 0; (i < size_i) && (distance_updated < distance_to_updated);)
         {
-            pose_cur_end = this->new_plan_output_.path.poses[i];
+            pose_cur_end = poses_current[i];
             double time_cur = rclcpp::Time(pose_cur_end.header.stamp).seconds();
-            for (size_t j = index_j + 1; j < plan_other.poses.size();)
+            for (size_t j = 0; j < size_j;)
             {
                 double time_other = rclcpp::Time(plan_other.poses[j].header.stamp).seconds();
                 double time_delta = time_cur - time_other;
                 double time_delta_abs = std::abs(time_delta);
                 
-                if (time_delta_abs > this->time_tolerance_)
+                if (time_delta_abs < time_delta_min) // 当前时间差比上一次小，继续迭代。
                 {
-                    if (time_delta > 0.0) // larger stamp: cur plan => increase index of j 
+                    // 当遇到最后一个元素时，不能再向后迭代，防止遗漏最后一个匹配结果。
+                    if (i == size_i -1  || j == size_j -1)
                     {
-                        j++;
-                    }
-                    else                  // larger stamp: other plan => increase index of i
-                    {
-                        break;
-                    }
-                }
-                else
-                {
-                    if (time_delta_abs < time_delta_min)
-                    {
-                        time_delta_min = time_delta_abs;
-                        j++;
+                        if (time_delta_abs < this->time_tolerance_)
+                        {
+                            std::pair<size_t, size_t> one_pair;
+                            one_pair.first = i;
+                            one_pair.second = j;
+                            compare_index_vec.push_back(one_pair);
+                            // 用于结束遍历
+                            i = size_i;
+                            j = size_j;
+                        }
+                        else
+                        {
+                            // 不满足time_tolerance,不记入结果。
+                        }
                     }
                     else
                     {
-                        index_i = i;
-                        index_j = j - 1;
-                        std::pair<size_t, size_t> one_pair;
-                        one_pair.first = index_i;
-                        one_pair.second = index_j;
-                        compare_index_vec.push_back(one_pair);
-                        time_delta_min = std::numeric_limits<double>::max();
-                        break;
+                        if (time_delta <= 0.0 ) // stamp i <= j => iterator i( operation: j=j,i++) ; 简化省略 delta=0的处理
+                        {
+                            delta_i = 1;
+                            delta_j = 0;
+                            i++;
+                            break;
+                        }
+                        else                    // stamp i > j => iterator j ( operation: i=i;j++)
+                        {
+                            delta_i = 0;
+                            delta_j = 1;
+                            j++;
+                        }
                     }
+                }
+                else  // 当前时间差比上一次大，取上一次的索引作为比对结果。
+                {
+                    time_delta_min = std::numeric_limits<double>::max();
+                    std::pair<size_t, size_t> one_pair;
+                    one_pair.first = i - delta_i;
+                    one_pair.second = j - delta_j;
+                    compare_index_vec.push_back(one_pair);
                 }    
             } // end of loop for j
-            
+
             distance_delta = std::hypot(pose_cur_end.pose.position.y - pose_cur_start.pose.position.y, 
                 pose_cur_end.pose.position.x - pose_cur_start.pose.position.x);
             distance_updated += distance_delta;
             pose_cur_start = pose_cur_end;
         } // end of loop for i
 
+        RCLCPP_INFO(get_logger(), "1");
+        RCLCPP_INFO(get_logger(), "number_size: %zd", compare_index_vec.size());
         for (size_t number = 0; number < compare_index_vec.size(); number++)
         {
+            RCLCPP_INFO(get_logger(), "number: %zd", number);
             size_t index_i, index_j;
             index_i = compare_index_vec[number].first;
             index_j = compare_index_vec[number].second;
-            auto pose1 = this->new_plan_output_.path.poses[index_i];
-            auto pose2 = plan_other.poses[index_j];
+            RCLCPP_INFO(get_logger(), "index_i: %zd", index_i);
+            RCLCPP_INFO(get_logger(), "index_j: %zd", index_j);
+
+            geometry_msgs::msg::PoseStamped pose1, pose2;
+            RCLCPP_INFO(get_logger(), "pose_current size: %zd", poses_current.size());
+            pose1 = poses_current[index_i];
+            RCLCPP_INFO(get_logger(), "pose_other size: %zd", plan_other.poses.size());
+            pose2 = plan_other.poses[index_j];
+            RCLCPP_INFO(get_logger(), "3");
+
             double distance = std::hypot(pose1.pose.position.x - pose2.pose.position.x,
                 pose1.pose.position.y - pose2.pose.position.y);
             if (distance < this->collision_radius_check_threshold_)
             {
-                RCLCPP_INFO(get_logger(), "======================= collsion =======================");
-                RCLCPP_INFO(get_logger(), "pair_number: %zd, i: %zd, j: %zd", number, index_i, index_j);
+                RCLCPP_INFO(get_logger(),  "======================= collsion =======================");
+                RCLCPP_INFO(get_logger(),  "pair_number: %zd, i: %zd, j: %zd", number, index_i, index_j);
                 ret = true;
                 double pose1_x, pose1_y, pose1_theta;
                 double pose2_x, pose2_y, pose2_theta;
                 double time_collision;
 
                 // fix bug for time of collision. Do not use get_clock()->now() !!!
-                auto pose_start = this->new_plan_output_.path.poses[0];
+                auto pose_start = poses_current[0];
                 double time_now = rclcpp::Time(pose_start.header.stamp).seconds();;
                 double time_future = rclcpp::Time(pose1.header.stamp).seconds();
                 // RCLCPP_INFO(get_logger(), "time_now: %f", time_now);
@@ -560,19 +595,20 @@ namespace multi_robots_avoidance_action
                 pose2_y = pose2.pose.position.y;
                 pose2_theta = tf2::getYaw(pose2.pose.orientation);
 
-                RCLCPP_INFO_THROTTLE(this->get_logger(), *get_clock(), 1000, "Collision will occurs after %f seconds, between robot %s  and robot %s ",
+                RCLCPP_INFO(this->get_logger(), "Collision will occurs after %f seconds, between robot %s  and robot %s ",
                     time_collision, this->namespace_name_.c_str(), namespace_name.c_str());
                 RCLCPP_INFO_THROTTLE(get_logger(),*get_clock(), 1000,"current robot pose: (%f, %f, %f)", pose1_x, pose1_y, pose1_theta);
                 RCLCPP_INFO_THROTTLE(get_logger(),*get_clock(), 1000,"compare robot pose: (%f, %f, %f)", pose2_x, pose2_y, pose2_theta);
-                RCLCPP_INFO_THROTTLE(get_logger(),*get_clock(), 1000, "distance: %f", distance);
+                RCLCPP_INFO(get_logger(), "distance: %f", distance);
                 RCLCPP_INFO_THROTTLE(get_logger(),*get_clock(), 1000, "pose1 stamp: %f", rclcpp::Time(pose1.header.stamp).seconds());
                 RCLCPP_INFO_THROTTLE(get_logger(),*get_clock(), 1000, "pose2 stamp: %f", rclcpp::Time(pose2.header.stamp).seconds());
+                RCLCPP_INFO(get_logger(), "plan_filter end3"); 
                 return ret;
             }
             else
             {
-                RCLCPP_DEBUG(get_logger(), "----------------------- collsion -----------------------");
-                RCLCPP_DEBUG(get_logger(), "pair_number: %zd, i: %zd, j: %zd", number, index_i, index_j);
+                RCLCPP_INFO(get_logger(), "----------------------- collsion -----------------------");
+                RCLCPP_INFO(get_logger(), "pair_number: %zd, i: %zd, j: %zd", number, index_i, index_j);
                 double pose1_x, pose1_y, pose1_theta;
                 double pose2_x, pose2_y, pose2_theta;
 
@@ -584,12 +620,12 @@ namespace multi_robots_avoidance_action
                 pose2_theta = tf2::getYaw(pose2.pose.orientation);
                 RCLCPP_DEBUG(get_logger(),"current robot pose: (%f, %f, %f)", pose1_x, pose1_y, pose1_theta);
                 RCLCPP_DEBUG(get_logger(),"compare robot pose: (%f, %f, %f)", pose2_x, pose2_y, pose2_theta);
-                RCLCPP_DEBUG(get_logger(), "distance: %f", distance);
+                RCLCPP_INFO(get_logger(), "distance: %f", distance);
                 RCLCPP_DEBUG(get_logger(), "pose1 stamp: %f", rclcpp::Time(pose1.header.stamp).seconds());
                 RCLCPP_DEBUG(get_logger(), "pose2 stamp: %f", rclcpp::Time(pose2.header.stamp).seconds());
             }
         }
-        RCLCPP_DEBUG(get_logger(), "plan_filter end");   
+        RCLCPP_INFO(get_logger(), "plan_filter end4");   
 
         return ret;
     }
@@ -605,6 +641,7 @@ namespace multi_robots_avoidance_action
         {
             RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000, "now_time: %f, pose_time: %f", now_time, time_robot_pose);
             RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000, "Didn't receive a valid robot_pose of %s, just wait.", robot_info.namespace_name.c_str());
+            RCLCPP_DEBUG(get_logger(), "robot_collision_check end");   
             return true; // just wait, until received a valid robot_pose. 
         }
         else
@@ -647,6 +684,14 @@ namespace multi_robots_avoidance_action
                 RobotInfos& robot_info = *iter;
                 auto now_time = this->get_clock()->now().seconds();
                 auto last_time = rclcpp::Time(robot_info.time_last_detected).seconds();
+                auto last_time_plan = rclcpp::Time(robot_info.time_last_detected_plan).seconds();
+
+                if((std::abs(now_time - last_time_plan) > this->pose_and_plan_timeout_) && robot_info.path.poses.size() != 0)
+                {
+                    RCLCPP_INFO(get_logger(), "Robot %s's plan is timeout, assign empty value.", robot_info.namespace_name.c_str());
+                    robot_info.path = nav_msgs::msg::Path();
+                }                
+
                 if (std::abs(now_time -  last_time> this->pose_and_plan_timeout_))
                 {
                     RCLCPP_INFO(this->get_logger(), "robot %s timeout, delete...", robot_info.namespace_name.c_str());

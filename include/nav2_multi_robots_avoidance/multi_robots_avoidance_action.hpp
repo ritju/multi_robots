@@ -30,6 +30,7 @@ enum class RobotState
 struct RobotInfos
 {
         builtin_interfaces::msg::Time time_last_detected;
+        builtin_interfaces::msg::Time time_last_detected_plan;
         std::string namespace_name;
         int priority;
         double vel_x_max;
@@ -78,7 +79,7 @@ class MultiRobotsAvoidanceAction : public rclcpp::Node
                  */
                 bool plan_filter(std::string namespace_name, nav_msgs::msg::Path plan_other); 
 
-                typedef std::recursive_mutex mutex_t;
+                typedef std::mutex mutex_t;
                 mutex_t * getMutex()
                 {
                         return access_;

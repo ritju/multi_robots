@@ -3,6 +3,7 @@ import os
 from ament_index_python import get_package_share_directory
 from launch import LaunchDescription
 from launch_ros.actions import Node
+from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 
 def generate_launch_description():
@@ -16,6 +17,9 @@ def generate_launch_description():
     params_file_path = os.path.join(multi_robots_pkg_path, 'param', 'config.yaml')   
 
     namespace = LaunchConfiguration("namespace")
+    log_level = LaunchConfiguration("log_level", default='info')
+
+    log_level_arg = DeclareLaunchArgument('log_level', default_value='info', description='define multi_robots_avoidance node log level')
 
     priority = 1
     try:
@@ -39,8 +43,10 @@ def generate_launch_description():
         parameters=[params_file_path, {"use_sim_time": False, "priority": priority}],
         remappings=[("/tf", "tf"),
                     ("/tf_static", "tf_static")],
+        arguments=['--ros-args','--log-level', ['multi_robots_avoidance:=', LaunchConfiguration('log_level')]],
     )
 
+    launch_description.add_action(log_level_arg)
     launch_description.add_action(nav2_multi_robots_avoidance_node)
 
     return launch_description
