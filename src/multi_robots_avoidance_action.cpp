@@ -313,9 +313,10 @@ namespace multi_robots_avoidance_action
 
     void MultiRobotsAvoidanceAction::current_robot_controller_vel_sub_callback_(const geometry_msgs::msg::Twist &controller_vel)
     {
-        RCLCPP_DEBUG(get_logger(), "current_robot_controller_vel_sub_callback_ begin");
+        RCLCPP_INFO(get_logger(), "current_robot_controller_vel_sub_callback_ begin");
         std::lock_guard<mutex_t> guard(*getMutex());
         this->twist_controller_ = controller_vel;
+        RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 1000, "other_robots_infos.size: %zd", this->other_robots_infos.size());
         for (size_t i = 0; i < this->other_robots_infos.size(); i++)
         {
             this->collision_ = this->robot_collision_check(this->other_robots_infos[i]);
@@ -336,6 +337,7 @@ namespace multi_robots_avoidance_action
             RCLCPP_INFO(get_logger(), "Robot state changed from %s to %s", (bool)this->state_last_?"FORWARDING":"WAITING", (bool)this->state_current_?"FORWARDING":"WAITING");
         }
 
+        RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000, "robot state: %d", (int)this->state_current_);
         switch (this->state_current_)
         {
             case RobotState::WAITING:
@@ -347,13 +349,14 @@ namespace multi_robots_avoidance_action
             case RobotState::FORWARDING:
             default:
             {
-                RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "robot %s fowarding ...", this->namespace_name_.c_str());
+                RCLCPP_INFO(get_logger(), "forwarding");
+                RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "robot %s forwarding ...", this->namespace_name_.c_str());
                 cmd_vel_nav_pub_->publish(this->twist_controller_);
             }
         }
 
         this->state_last_ = this->state_current_;
-        RCLCPP_DEBUG(get_logger(), "current_robot_controller_vel_sub_callback_ end");
+        RCLCPP_INFO(get_logger(), "current_robot_controller_vel_sub_callback_ end");
     }
 
     void MultiRobotsAvoidanceAction::current_robot_plan_sub_callback_(const nav_msgs::msg::Path &plan)
@@ -455,13 +458,13 @@ namespace multi_robots_avoidance_action
 
     bool MultiRobotsAvoidanceAction::plan_filter(std::string namespace_name, nav_msgs::msg::Path plan_other)
     {
-        RCLCPP_INFO(get_logger(), "plan_filter begin");   
+        RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 1000,  "plan_filter begin");   
         bool ret = false;
         // fix bug when plan's poses size is 0
         if (plan_other.poses.size() == 0)
         {
-            RCLCPP_INFO(get_logger(), "Robot %s's plan is empty, ignore ...", namespace_name.c_str());
-            RCLCPP_INFO(get_logger(), "plan_filter end1"); 
+            RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000, "Robot %s's plan is empty, ignore ...", namespace_name.c_str());
+            RCLCPP_DEBUG(get_logger(), "plan_filter end1"); 
             return false;
         }
         
@@ -473,45 +476,55 @@ namespace multi_robots_avoidance_action
         if (poses_current.size() == 0)
         {
             RCLCPP_INFO(get_logger(), "Current robot's plan is empty, just wait.");
-            RCLCPP_INFO(get_logger(), "plan_filter end2"); 
+            RCLCPP_DEBUG(get_logger(), "plan_filter end2"); 
             return true;
         }
         geometry_msgs::msg::PoseStamped pose_cur_start, pose_cur_end;
         geometry_msgs::msg::PoseStamped pose_other_compare;
 
-        RCLCPP_INFO(get_logger(), "-1");
         pose_cur_start = poses_current[0];
-        RCLCPP_INFO(get_logger(), "0");
         double time_delta_min = std::numeric_limits<double>::max();
         
         size_t delta_i = 0, delta_j = 0;
+        size_t index_i_selected = -1, index_j_selected = -1;
         size_t size_i = poses_current.size(), size_j = plan_other.poses.size();
 
         std::vector<std::pair<size_t, size_t>> compare_index_vec;
-        for (size_t i = 0; (i < size_i) && (distance_updated < distance_to_updated);)
+        RCLCPP_DEBUG(get_logger(), "size_i: %zd", size_i);
+        RCLCPP_DEBUG(get_logger(), "size_j: %zd", size_j);
+        for (size_t i = index_i_selected + 1; (i < size_i) && (distance_updated < distance_to_updated);)
         {
+            RCLCPP_DEBUG(get_logger(), "i: %zd", i);
+            index_i_selected = i;
             pose_cur_end = poses_current[i];
             double time_cur = rclcpp::Time(pose_cur_end.header.stamp).seconds();
-            for (size_t j = 0; j < size_j;)
+            RCLCPP_DEBUG(get_logger(), "stamp: %f", time_cur);
+            for (size_t j = index_j_selected + 1; j < size_j;)
             {
+                RCLCPP_DEBUG(get_logger(), "j: %zd", j);
+                index_j_selected = j;
                 double time_other = rclcpp::Time(plan_other.poses[j].header.stamp).seconds();
+                RCLCPP_DEBUG(get_logger(), "stamp: %f", time_other);
                 double time_delta = time_cur - time_other;
                 double time_delta_abs = std::abs(time_delta);
+                RCLCPP_DEBUG(get_logger(), "delta: %f", time_delta);
                 
                 if (time_delta_abs < time_delta_min) // 当前时间差比上一次小，继续迭代。
                 {
                     // 当遇到最后一个元素时，不能再向后迭代，防止遗漏最后一个匹配结果。
+                    time_delta_min = time_delta_abs;
                     if (i == size_i -1  || j == size_j -1)
                     {
                         if (time_delta_abs < this->time_tolerance_)
                         {
                             std::pair<size_t, size_t> one_pair;
-                            one_pair.first = i;
-                            one_pair.second = j;
+                            one_pair.first = index_i_selected;
+                            one_pair.second = index_j_selected;
+                            RCLCPP_DEBUG(get_logger(), "push i: %zd and j: %zd",index_i_selected, index_j_selected);
                             compare_index_vec.push_back(one_pair);
+                            i = size_i; // break i
+                            break; // break j
                             // 用于结束遍历
-                            i = size_i;
-                            j = size_j;
                         }
                         else
                         {
@@ -525,6 +538,7 @@ namespace multi_robots_avoidance_action
                             delta_i = 1;
                             delta_j = 0;
                             i++;
+                            index_j_selected = j - 1;
                             break;
                         }
                         else                    // stamp i > j => iterator j ( operation: i=i;j++)
@@ -539,9 +553,12 @@ namespace multi_robots_avoidance_action
                 {
                     time_delta_min = std::numeric_limits<double>::max();
                     std::pair<size_t, size_t> one_pair;
-                    one_pair.first = i - delta_i;
-                    one_pair.second = j - delta_j;
+                    index_i_selected = i - delta_i;
+                    index_j_selected = j - delta_j;
+                    one_pair.first = index_i_selected;
+                    one_pair.second = index_j_selected;
                     compare_index_vec.push_back(one_pair);
+                    break;
                 }    
             } // end of loop for j
 
@@ -551,30 +568,28 @@ namespace multi_robots_avoidance_action
             pose_cur_start = pose_cur_end;
         } // end of loop for i
 
-        RCLCPP_INFO(get_logger(), "1");
-        RCLCPP_INFO(get_logger(), "number_size: %zd", compare_index_vec.size());
+        RCLCPP_DEBUG(get_logger(), "number_size: %zd", compare_index_vec.size());
         for (size_t number = 0; number < compare_index_vec.size(); number++)
         {
-            RCLCPP_INFO(get_logger(), "number: %zd", number);
+            RCLCPP_DEBUG(get_logger(), "number: %zd", number);
             size_t index_i, index_j;
             index_i = compare_index_vec[number].first;
             index_j = compare_index_vec[number].second;
-            RCLCPP_INFO(get_logger(), "index_i: %zd", index_i);
-            RCLCPP_INFO(get_logger(), "index_j: %zd", index_j);
+            RCLCPP_DEBUG(get_logger(), "index_i: %zd", index_i);
+            RCLCPP_DEBUG(get_logger(), "index_j: %zd", index_j);
 
             geometry_msgs::msg::PoseStamped pose1, pose2;
-            RCLCPP_INFO(get_logger(), "pose_current size: %zd", poses_current.size());
+            RCLCPP_DEBUG(get_logger(), "pose_current size: %zd", poses_current.size());
             pose1 = poses_current[index_i];
-            RCLCPP_INFO(get_logger(), "pose_other size: %zd", plan_other.poses.size());
+            RCLCPP_DEBUG(get_logger(), "pose_other size: %zd", plan_other.poses.size());
             pose2 = plan_other.poses[index_j];
-            RCLCPP_INFO(get_logger(), "3");
 
             double distance = std::hypot(pose1.pose.position.x - pose2.pose.position.x,
                 pose1.pose.position.y - pose2.pose.position.y);
             if (distance < this->collision_radius_check_threshold_)
             {
-                RCLCPP_INFO(get_logger(),  "======================= collsion =======================");
-                RCLCPP_INFO(get_logger(),  "pair_number: %zd, i: %zd, j: %zd", number, index_i, index_j);
+                RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,  "======================= collsion occurs =======================");
+                RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000, "pair_number: %zd, i: %zd, j: %zd", number, index_i, index_j);
                 ret = true;
                 double pose1_x, pose1_y, pose1_theta;
                 double pose2_x, pose2_y, pose2_theta;
@@ -595,20 +610,20 @@ namespace multi_robots_avoidance_action
                 pose2_y = pose2.pose.position.y;
                 pose2_theta = tf2::getYaw(pose2.pose.orientation);
 
-                RCLCPP_INFO(this->get_logger(), "Collision will occurs after %f seconds, between robot %s  and robot %s ",
+                RCLCPP_INFO_THROTTLE(this->get_logger(), *get_clock(), 1000,  "Collision will occurs after %f seconds, between %s and %s ",
                     time_collision, this->namespace_name_.c_str(), namespace_name.c_str());
-                RCLCPP_INFO_THROTTLE(get_logger(),*get_clock(), 1000,"current robot pose: (%f, %f, %f)", pose1_x, pose1_y, pose1_theta);
-                RCLCPP_INFO_THROTTLE(get_logger(),*get_clock(), 1000,"compare robot pose: (%f, %f, %f)", pose2_x, pose2_y, pose2_theta);
-                RCLCPP_INFO(get_logger(), "distance: %f", distance);
-                RCLCPP_INFO_THROTTLE(get_logger(),*get_clock(), 1000, "pose1 stamp: %f", rclcpp::Time(pose1.header.stamp).seconds());
-                RCLCPP_INFO_THROTTLE(get_logger(),*get_clock(), 1000, "pose2 stamp: %f", rclcpp::Time(pose2.header.stamp).seconds());
-                RCLCPP_INFO(get_logger(), "plan_filter end3"); 
+                RCLCPP_DEBUG_THROTTLE(get_logger(),*get_clock(), 1000,"current robot pose: (%f, %f, %f)", pose1_x, pose1_y, pose1_theta);
+                RCLCPP_DEBUG_THROTTLE(get_logger(),*get_clock(), 1000,"compare robot pose: (%f, %f, %f)", pose2_x, pose2_y, pose2_theta);
+                RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 1000, "distance: %f", distance);
+                RCLCPP_DEBUG_THROTTLE(get_logger(),*get_clock(), 1000, "pose1 stamp: %f", rclcpp::Time(pose1.header.stamp).seconds());
+                RCLCPP_DEBUG_THROTTLE(get_logger(),*get_clock(), 1000, "pose2 stamp: %f", rclcpp::Time(pose2.header.stamp).seconds());
+                RCLCPP_DEBUG(get_logger(), "plan_filter end3"); 
                 return ret;
             }
             else
             {
-                RCLCPP_INFO(get_logger(), "----------------------- collsion -----------------------");
-                RCLCPP_INFO(get_logger(), "pair_number: %zd, i: %zd, j: %zd", number, index_i, index_j);
+                RCLCPP_DEBUG(get_logger(), "----------------------- no collsion -----------------------");
+                RCLCPP_DEBUG(get_logger(), "pair_number: %zd, i: %zd, j: %zd", number, index_i, index_j);
                 double pose1_x, pose1_y, pose1_theta;
                 double pose2_x, pose2_y, pose2_theta;
 
@@ -620,19 +635,19 @@ namespace multi_robots_avoidance_action
                 pose2_theta = tf2::getYaw(pose2.pose.orientation);
                 RCLCPP_DEBUG(get_logger(),"current robot pose: (%f, %f, %f)", pose1_x, pose1_y, pose1_theta);
                 RCLCPP_DEBUG(get_logger(),"compare robot pose: (%f, %f, %f)", pose2_x, pose2_y, pose2_theta);
-                RCLCPP_INFO(get_logger(), "distance: %f", distance);
+                RCLCPP_DEBUG(get_logger(), "distance: %f", distance);
                 RCLCPP_DEBUG(get_logger(), "pose1 stamp: %f", rclcpp::Time(pose1.header.stamp).seconds());
                 RCLCPP_DEBUG(get_logger(), "pose2 stamp: %f", rclcpp::Time(pose2.header.stamp).seconds());
             }
         }
-        RCLCPP_INFO(get_logger(), "plan_filter end4");   
+        RCLCPP_DEBUG(get_logger(), "plan_filter end4");   
 
         return ret;
     }
 
     bool MultiRobotsAvoidanceAction::robot_collision_check(RobotInfos robot_info)
     {
-        RCLCPP_DEBUG(get_logger(), "robot_collision_check begin");     
+        RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 1000, "robot_collision_check begin");     
         bool ret = true;
         bool bool_pose_filter, bool_plan_filter;
         double time_robot_pose = rclcpp::Time(robot_info.pose.header.stamp).seconds();

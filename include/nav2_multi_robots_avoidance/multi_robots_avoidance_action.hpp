@@ -79,7 +79,7 @@ class MultiRobotsAvoidanceAction : public rclcpp::Node
                  */
                 bool plan_filter(std::string namespace_name, nav_msgs::msg::Path plan_other); 
 
-                typedef std::mutex mutex_t;
+                typedef std::recursive_mutex mutex_t;
                 mutex_t * getMutex()
                 {
                         return access_;
