@@ -313,7 +313,7 @@ namespace multi_robots_avoidance_action
 
     void MultiRobotsAvoidanceAction::current_robot_controller_vel_sub_callback_(const geometry_msgs::msg::Twist &controller_vel)
     {
-        RCLCPP_INFO(get_logger(), "current_robot_controller_vel_sub_callback_ begin");
+        RCLCPP_DEBUG(get_logger(), "current_robot_controller_vel_sub_callback_ begin");
         std::lock_guard<mutex_t> guard(*getMutex());
         this->twist_controller_ = controller_vel;
         RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 1000, "other_robots_infos.size: %zd", this->other_robots_infos.size());
@@ -337,7 +337,7 @@ namespace multi_robots_avoidance_action
             RCLCPP_INFO(get_logger(), "Robot state changed from %s to %s", (bool)this->state_last_?"FORWARDING":"WAITING", (bool)this->state_current_?"FORWARDING":"WAITING");
         }
 
-        RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000, "robot state: %d", (int)this->state_current_);
+        // RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000, "robot state: %d", (int)this->state_current_);
         switch (this->state_current_)
         {
             case RobotState::WAITING:
@@ -349,14 +349,13 @@ namespace multi_robots_avoidance_action
             case RobotState::FORWARDING:
             default:
             {
-                RCLCPP_INFO(get_logger(), "forwarding");
                 RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "robot %s forwarding ...", this->namespace_name_.c_str());
                 cmd_vel_nav_pub_->publish(this->twist_controller_);
             }
         }
 
         this->state_last_ = this->state_current_;
-        RCLCPP_INFO(get_logger(), "current_robot_controller_vel_sub_callback_ end");
+        RCLCPP_DEBUG(get_logger(), "current_robot_controller_vel_sub_callback_ end");
     }
 
     void MultiRobotsAvoidanceAction::current_robot_plan_sub_callback_(const nav_msgs::msg::Path &plan)
