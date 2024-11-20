@@ -60,7 +60,7 @@ namespace multi_robots_avoidance_action
         rclcpp::CallbackGroup::SharedPtr cb_group3 = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
         rclcpp::SubscriptionOptions sub_opt3 = rclcpp::SubscriptionOptions();
         sub_opt3.callback_group = cb_group3;
-        this->create_subscription<capella_ros_msg::msg::PlanWithNamespace>("plan_stamped", 20,
+        this->robot_plan_sub_ = this->create_subscription<capella_ros_msg::msg::PlanWithNamespace>("plan_stamped", 20,
                 std::bind(&MultiRobotsAvoidanceAction::higher_priority_robot_plan_sub_callback_, this, _1), sub_opt3);
 
         // sub for /cmd_vel_nav_
