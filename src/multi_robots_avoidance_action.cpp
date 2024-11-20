@@ -49,11 +49,25 @@ namespace multi_robots_avoidance_action
         sub_opt1.callback_group = cb_group1;
         this->higher_priority_robot_info_sub_ = this->create_subscription<capella_ros_msg::msg::RobotInfo>("/robot_info", 1, std::bind(&MultiRobotsAvoidanceAction::higher_priority_robot_info_sub_callback_, this, _1), sub_opt1);
 
-        // sub for /cmd_vel_nav_
+        // sub for /robot_pose
         rclcpp::CallbackGroup::SharedPtr cb_group2 = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
         rclcpp::SubscriptionOptions sub_opt2 = rclcpp::SubscriptionOptions();
         sub_opt2.callback_group = cb_group2;
-        this->current_robot_controller_vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>("cmd_vel_nav_", 10, std::bind(&MultiRobotsAvoidanceAction::current_robot_controller_vel_sub_callback_, this, _1), sub_opt2);
+        this->robot_pose_sub_ = this->create_subscription<capella_ros_msg::msg::RobotPoseWithNamespace>("robot_pose", 20, 
+            std::bind(&MultiRobotsAvoidanceAction::higher_priority_robot_pose_sub_callback_, this, _1), sub_opt2);
+
+        // sub for plan_stamped
+        rclcpp::CallbackGroup::SharedPtr cb_group3 = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+        rclcpp::SubscriptionOptions sub_opt3 = rclcpp::SubscriptionOptions();
+        sub_opt3.callback_group = cb_group3;
+        this->create_subscription<capella_ros_msg::msg::PlanWithNamespace>("plan_stamped", 20,
+                std::bind(&MultiRobotsAvoidanceAction::higher_priority_robot_plan_sub_callback_, this, _1), sub_opt3);
+
+        // sub for /cmd_vel_nav_
+        rclcpp::CallbackGroup::SharedPtr cb_group4 = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+        rclcpp::SubscriptionOptions sub_opt4 = rclcpp::SubscriptionOptions();
+        sub_opt4.callback_group = cb_group2;
+        this->current_robot_controller_vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>("cmd_vel_nav_", 10, std::bind(&MultiRobotsAvoidanceAction::current_robot_controller_vel_sub_callback_, this, _1), sub_opt4);
 
         // pub for /plan_stamped
         this->new_plan_pub_ = this->create_publisher<capella_ros_msg::msg::PlanWithNamespace>("plan_stamped", 1);
@@ -170,8 +184,8 @@ namespace multi_robots_avoidance_action
             {
                 if (i == this->other_robots_infos.size() - 1)
                 {
-                    RCLCPP_WARN(this->get_logger(), "robot %s received a pose msg, but it's namespace %s was not in the robot infos list",
-                        this->namespace_name_.c_str(), pose.namespace_name.c_str());
+                    // RCLCPP_WARN(this->get_logger(), "robot %s received a pose msg, but it's namespace %s was not in the robot infos list",
+                    //     this->namespace_name_.c_str(), pose.namespace_name.c_str());
                 }
             }
         }
@@ -193,8 +207,8 @@ namespace multi_robots_avoidance_action
             {
                 if (i == this->other_robots_infos.size() - 1)
                 {
-                    RCLCPP_WARN(this->get_logger(), "robot %s received a plan msg, but it's namespace %s was not in the robot infos list",
-                        this->namespace_name_.c_str(), plan.namespace_name.c_str());
+                    // RCLCPP_WARN(this->get_logger(), "robot %s received a plan msg, but it's namespace %s was not in the robot infos list",
+                    //     this->namespace_name_.c_str(), plan.namespace_name.c_str());
                 }
             }
         }
@@ -257,24 +271,24 @@ namespace multi_robots_avoidance_action
             ris.path = nav_msgs::msg::Path();
             this->other_robots_infos.push_back(ris);
 
-            RCLCPP_INFO(this->get_logger(), "add subs for robot pose and new plan of %s.", robot_info.namespace_name.c_str());
+            // RCLCPP_INFO(this->get_logger(), "add subs for robot pose and new plan of %s.", robot_info.namespace_name.c_str());
 
-            auto pose_sub = this->create_subscription<capella_ros_msg::msg::RobotPoseWithNamespace>(ris.namespace_name + "/robot_pose", 1,
-                std::bind(&MultiRobotsAvoidanceAction::higher_priority_robot_pose_sub_callback_, this, _1)); 
-            auto plan_sub = this->create_subscription<capella_ros_msg::msg::PlanWithNamespace>(ris.namespace_name + "/plan_stamped", 1,
-                std::bind(&MultiRobotsAvoidanceAction::higher_priority_robot_plan_sub_callback_, this, _1));
+            // auto pose_sub = this->create_subscription<capella_ros_msg::msg::RobotPoseWithNamespace>(ris.namespace_name + "/robot_pose", 1,
+            //     std::bind(&MultiRobotsAvoidanceAction::higher_priority_robot_pose_sub_callback_, this, _1)); 
+            // auto plan_sub = this->create_subscription<capella_ros_msg::msg::PlanWithNamespace>(ris.namespace_name + "/plan_stamped", 1,
+            //     std::bind(&MultiRobotsAvoidanceAction::higher_priority_robot_plan_sub_callback_, this, _1));
 
-            // update pose sub vector
-            std::pair<std::string, rclcpp::Subscription<capella_ros_msg::msg::RobotPoseWithNamespace>::SharedPtr> pair_pose;
-            pair_pose.first = ris.namespace_name;
-            pair_pose.second = pose_sub;
-            higher_priority_robot_pose_sub_vec_.push_back(pair_pose);
+            // // update pose sub vector
+            // std::pair<std::string, rclcpp::Subscription<capella_ros_msg::msg::RobotPoseWithNamespace>::SharedPtr> pair_pose;
+            // pair_pose.first = ris.namespace_name;
+            // pair_pose.second = pose_sub;
+            // higher_priority_robot_pose_sub_vec_.push_back(pair_pose);
 
-            // update plan usb vector
-            std::pair<std::string, rclcpp::Subscription<capella_ros_msg::msg::PlanWithNamespace>::SharedPtr> pair_plan;
-            pair_plan.first = ris.namespace_name;
-            pair_plan.second = plan_sub;   
-            higher_priority_robot_plan_sub_vec_.push_back(pair_plan);
+            // // update plan usb vector
+            // std::pair<std::string, rclcpp::Subscription<capella_ros_msg::msg::PlanWithNamespace>::SharedPtr> pair_plan;
+            // pair_plan.first = ris.namespace_name;
+            // pair_plan.second = plan_sub;   
+            // higher_priority_robot_plan_sub_vec_.push_back(pair_plan);
         }
         else
         {
@@ -548,11 +562,11 @@ namespace multi_robots_avoidance_action
 
                     std::string namespace_name_delete = robot_info.namespace_name;
                     
-                    // delete vec for pose_subs
-                    this->delete_element(namespace_name_delete, this->higher_priority_robot_pose_sub_vec_);
+                    // // delete vec for pose_subs
+                    // this->delete_element(namespace_name_delete, this->higher_priority_robot_pose_sub_vec_);
 
-                    // delete vec for plan_subs
-                    this->delete_element(namespace_name_delete, this->higher_priority_robot_plan_sub_vec_);
+                    // // delete vec for plan_subs
+                    // this->delete_element(namespace_name_delete, this->higher_priority_robot_plan_sub_vec_);
 
                     iter = this->other_robots_infos.erase(iter);
                 }

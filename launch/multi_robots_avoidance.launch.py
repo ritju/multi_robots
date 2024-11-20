@@ -34,11 +34,11 @@ def generate_launch_description():
         executable='multi_robots_avoidance',
         package='nav2_multi_robots_avoidance',
         name='multi_robots_avoidance',
-        namespace=namespace,
+        # namespace=namespace,
         output='screen',
         parameters=[params_file_path, {"use_sim_time": False, "priority": priority}],
-        remappings=[("/tf", "tf"),
-                    ("/tf_static", "tf_static")],
+        # remappings=[("/tf", "tf"),
+        #             ("/tf_static", "tf_static")],
     )
 
     launch_description.add_action(nav2_multi_robots_avoidance_node)

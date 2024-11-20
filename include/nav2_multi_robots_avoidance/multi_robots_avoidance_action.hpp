@@ -91,12 +91,15 @@ class MultiRobotsAvoidanceAction : public rclcpp::Node
                 rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr                          current_robot_plan_sub_;                   // 订阅自身plan,增加时间戳
                 rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr                    current_robot_controller_vel_sub_;         // 订阅自身controller速度
                 
+                rclcpp::Subscription<capella_ros_msg::msg::RobotPoseWithNamespace>::SharedPtr robot_pose_sub_;
+                rclcpp::Subscription<capella_ros_msg::msg::PlanWithNamespace>::SharedPtr robot_plan_sub_;
+                
                 // vector of pairs for store plan's subs and poses's subs
-                std::vector<std::pair<std::string, 
-                        rclcpp::Subscription<capella_ros_msg::msg::RobotPoseWithNamespace>::SharedPtr>>           higher_priority_robot_pose_sub_vec_;       // 订阅高优先级机器人pose
+                // std::vector<std::pair<std::string, 
+                //         rclcpp::Subscription<capella_ros_msg::msg::RobotPoseWithNamespace>::SharedPtr>>           higher_priority_robot_pose_sub_vec_;       // 订阅高优先级机器人pose
 
-                std::vector<std::pair<std::string , 
-                        rclcpp::Subscription<capella_ros_msg::msg::PlanWithNamespace>::SharedPtr>>                higher_priority_robot_plan_sub_vec_;       // 订阅高优先级机器人plan
+                // std::vector<std::pair<std::string , 
+                //         rclcpp::Subscription<capella_ros_msg::msg::PlanWithNamespace>::SharedPtr>>                higher_priority_robot_plan_sub_vec_;       // 订阅高优先级机器人plan
 
                 // pubs
                 rclcpp::Publisher<capella_ros_msg::msg::RobotPoseWithNamespace>::SharedPtr robot_pose_pub_;
