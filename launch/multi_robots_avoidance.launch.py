@@ -37,6 +37,7 @@ def generate_launch_description():
         # namespace=namespace,
         output='screen',
         parameters=[params_file_path, {"use_sim_time": False, "priority": priority}],
+        respawn=True,
         # remappings=[("/tf", "tf"),
         #             ("/tf_static", "tf_static")],
     )
