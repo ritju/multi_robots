@@ -15,8 +15,8 @@ namespace multi_robots_avoidance_action
         this->state_current_ = RobotState::FORWARDING;
         this->collision_ = false;
         this->access_ = new mutex_t();
-        this->namespace_name_ = this->get_namespace();
-        RCLCPP_INFO(this->get_logger(), "The namespace of this node is %s.", this->namespace_name_.c_str());
+        // this->namespace_name_ = this->get_namespace();
+        // RCLCPP_INFO(this->get_logger(), "The namespace of this node is %s.", this->namespace_name_.c_str());
 
         RCLCPP_INFO(get_logger(), "Robot current state: %s", (bool)this->state_current_?"FORWARDING":"WAITING");
 
@@ -97,6 +97,7 @@ namespace multi_robots_avoidance_action
         this->declare_parameter<int>("frequency_pub_robot_info", 5);
         this->declare_parameter<float>("pose_and_plan_timeout", 1.0);
         this->declare_parameter<float>("time_tolerance", 0.1);
+        this->declare_parameter<std::string>("dummy_namespace_name", "mk");
 
         // get params
         this->priority_                          = this->get_parameter_or<int>("priority", 0);
@@ -110,6 +111,9 @@ namespace multi_robots_avoidance_action
         this->frequency_pub_robot_info_          = this->get_parameter_or<int>("frequency_pub_robot_info", 5);
         this->pose_and_plan_timeout_             = this->get_parameter_or<float>("pose_and_plan_timeout", 1.0);
         this->time_tolerance_                    = this->get_parameter_or<float>("time_tolerance", 0.1);
+        this->namespace_name_                    = this->get_parameter_or<std::string>("dummy_namespace_name", "mk");
+
+        RCLCPP_INFO(this->get_logger(), "The namespace of this node is %s.", this->namespace_name_.c_str());
     }
 
     void MultiRobotsAvoidanceAction::timer_pub_robot_info_callback_()

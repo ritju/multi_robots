@@ -29,6 +29,18 @@ def generate_launch_description():
         print("Please declare ROBOT_PRIORITY!")
         priority = 1
 
+    dummy_namespace_name = "mk"
+    try:
+        if 'CAPELLA_ROS_NAMESPACE' in os.environ:
+            dummy_namespace_name = os.environ.get('CAPELLA_ROS_NAMESPACE')
+            print(f'get CAPELLA_ROS_NAMESPACE value {dummy_namespace_name} from os.environment.')
+        else:
+            print('using default CAPELLA_ROS_NAMESPACE value mk')
+            dummy_namespace_name = 'mk'
+    except:
+        print("Please declare CAPELLA_ROS_NAMESPACE!")
+        dummy_namespace_name = 'mk'
+
     # multi_robots_avoidance Node
     nav2_multi_robots_avoidance_node = Node(
         executable='multi_robots_avoidance',
@@ -36,7 +48,7 @@ def generate_launch_description():
         name='multi_robots_avoidance',
         # namespace=namespace,
         output='screen',
-        parameters=[params_file_path, {"use_sim_time": False, "priority": priority}],
+        parameters=[params_file_path, {"use_sim_time": False, "priority": priority, 'dummy_namespace_name': dummy_namespace_name}],
         respawn=True,
         # remappings=[("/tf", "tf"),
         #             ("/tf_static", "tf_static")],
