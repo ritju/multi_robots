@@ -2,8 +2,8 @@
 /**:
   ros__parameters:
     # priority: 1
-    collision_plan_check_threshold: 1.0     # length of plan to check
-    collision_radius_check_threshold: 2.0   # radius of collision check
+    collision_plan_check_threshold: 0.5     # length of plan to check
+    collision_radius_check_threshold: 1.6   # radius of collision check
     global_pose_filter_threshold: 5.0
     vel_x_max: 0.6
     robot_offline_timeout: 1.5
