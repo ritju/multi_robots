@@ -15,8 +15,6 @@ namespace multi_robots_avoidance_action
         this->state_current_ = RobotState::FORWARDING;
         this->collision_ = false;
         this->access_ = new mutex_t();
-        this->namespace_name_ = this->get_namespace();
-        RCLCPP_INFO(this->get_logger(), "The namespace of this node is %s.", this->namespace_name_.c_str());
 
         RCLCPP_INFO(get_logger(), "Robot current state: %s", (bool)this->state_current_?"FORWARDING":"WAITING");
 
@@ -49,11 +47,25 @@ namespace multi_robots_avoidance_action
         sub_opt1.callback_group = cb_group1;
         this->higher_priority_robot_info_sub_ = this->create_subscription<capella_ros_msg::msg::RobotInfo>("/robot_info", 1, std::bind(&MultiRobotsAvoidanceAction::higher_priority_robot_info_sub_callback_, this, _1), sub_opt1);
 
-        // sub for /cmd_vel_nav_
+        // sub for /robot_pose
         rclcpp::CallbackGroup::SharedPtr cb_group2 = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
         rclcpp::SubscriptionOptions sub_opt2 = rclcpp::SubscriptionOptions();
         sub_opt2.callback_group = cb_group2;
-        this->current_robot_controller_vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>("cmd_vel_nav_", 10, std::bind(&MultiRobotsAvoidanceAction::current_robot_controller_vel_sub_callback_, this, _1), sub_opt2);
+        this->robot_pose_sub_ = this->create_subscription<capella_ros_msg::msg::RobotPoseWithNamespace>("robot_pose", 20, 
+            std::bind(&MultiRobotsAvoidanceAction::higher_priority_robot_pose_sub_callback_, this, _1), sub_opt2);
+
+        // sub for plan_stamped
+        rclcpp::CallbackGroup::SharedPtr cb_group3 = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+        rclcpp::SubscriptionOptions sub_opt3 = rclcpp::SubscriptionOptions();
+        sub_opt3.callback_group = cb_group3;
+        this->robot_plan_sub_ = this->create_subscription<capella_ros_msg::msg::PlanWithNamespace>("plan_stamped", 20,
+                std::bind(&MultiRobotsAvoidanceAction::higher_priority_robot_plan_sub_callback_, this, _1), sub_opt3);
+
+        // sub for /cmd_vel_nav_
+        rclcpp::CallbackGroup::SharedPtr cb_group4 = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+        rclcpp::SubscriptionOptions sub_opt4 = rclcpp::SubscriptionOptions();
+        sub_opt4.callback_group = cb_group2;
+        this->current_robot_controller_vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>("cmd_vel_nav_", 10, std::bind(&MultiRobotsAvoidanceAction::current_robot_controller_vel_sub_callback_, this, _1), sub_opt4);
 
         // pub for /plan_stamped
         this->new_plan_pub_ = this->create_publisher<capella_ros_msg::msg::PlanWithNamespace>("plan_stamped", 1);
@@ -83,6 +95,7 @@ namespace multi_robots_avoidance_action
         this->declare_parameter<int>("frequency_pub_robot_info", 5);
         this->declare_parameter<float>("pose_and_plan_timeout", 1.0);
         this->declare_parameter<float>("time_tolerance", 0.1);
+        this->declare_parameter<std::string>("dummy_namespace_name", "mk");
 
         // get params
         this->priority_                          = this->get_parameter_or<int>("priority", 0);
@@ -96,6 +109,9 @@ namespace multi_robots_avoidance_action
         this->frequency_pub_robot_info_          = this->get_parameter_or<int>("frequency_pub_robot_info", 5);
         this->pose_and_plan_timeout_             = this->get_parameter_or<float>("pose_and_plan_timeout", 1.0);
         this->time_tolerance_                    = this->get_parameter_or<float>("time_tolerance", 0.1);
+        this->namespace_name_                    = this->get_parameter_or<std::string>("dummy_namespace_name", "mk");
+
+        RCLCPP_INFO(this->get_logger(), "The namespace of this node is %s.", this->namespace_name_.c_str());
     }
 
     void MultiRobotsAvoidanceAction::timer_pub_robot_info_callback_()
@@ -186,8 +202,8 @@ namespace multi_robots_avoidance_action
             {
                 if (i == this->other_robots_infos.size() - 1)
                 {
-                    RCLCPP_WARN(this->get_logger(), "robot %s received a pose msg, but it's namespace %s was not in the robot infos list",
-                        this->namespace_name_.c_str(), pose.namespace_name.c_str());
+                    // RCLCPP_WARN(this->get_logger(), "robot %s received a pose msg, but it's namespace %s was not in the robot infos list",
+                    //     this->namespace_name_.c_str(), pose.namespace_name.c_str());
                 }
             }
         }
@@ -220,8 +236,8 @@ namespace multi_robots_avoidance_action
             {
                 if (i == this->other_robots_infos.size() - 1)
                 {
-                    RCLCPP_WARN(this->get_logger(), "robot %s received a plan msg, but it's namespace %s was not in the robot infos list",
-                        this->namespace_name_.c_str(), plan.namespace_name.c_str());
+                    // RCLCPP_WARN(this->get_logger(), "robot %s received a plan msg, but it's namespace %s was not in the robot infos list",
+                    //     this->namespace_name_.c_str(), plan.namespace_name.c_str());
                 }
             }
         }
@@ -285,25 +301,6 @@ namespace multi_robots_avoidance_action
             ris.pose = geometry_msgs::msg::PoseStamped();
             ris.path = nav_msgs::msg::Path();
             this->other_robots_infos.push_back(ris);
-
-            RCLCPP_INFO(this->get_logger(), "add subs for robot pose and new plan of %s.", robot_info.namespace_name.c_str());
-
-            auto pose_sub = this->create_subscription<capella_ros_msg::msg::RobotPoseWithNamespace>(ris.namespace_name + "/robot_pose", 1,
-                std::bind(&MultiRobotsAvoidanceAction::higher_priority_robot_pose_sub_callback_, this, _1)); 
-            auto plan_sub = this->create_subscription<capella_ros_msg::msg::PlanWithNamespace>(ris.namespace_name + "/plan_stamped", 1,
-                std::bind(&MultiRobotsAvoidanceAction::higher_priority_robot_plan_sub_callback_, this, _1));
-
-            // update pose sub vector
-            std::pair<std::string, rclcpp::Subscription<capella_ros_msg::msg::RobotPoseWithNamespace>::SharedPtr> pair_pose;
-            pair_pose.first = ris.namespace_name;
-            pair_pose.second = pose_sub;
-            higher_priority_robot_pose_sub_vec_.push_back(pair_pose);
-
-            // update plan usb vector
-            std::pair<std::string, rclcpp::Subscription<capella_ros_msg::msg::PlanWithNamespace>::SharedPtr> pair_plan;
-            pair_plan.first = ris.namespace_name;
-            pair_plan.second = plan_sub;   
-            higher_priority_robot_plan_sub_vec_.push_back(pair_plan);
         }
         else
         {
@@ -317,20 +314,36 @@ namespace multi_robots_avoidance_action
         std::lock_guard<mutex_t> guard(*getMutex());
         this->twist_controller_ = controller_vel;
         RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 1000, "other_robots_infos.size: %zd", this->other_robots_infos.size());
-        for (size_t i = 0; i < this->other_robots_infos.size(); i++)
+        
+        if (this->other_robots_infos.size() == 0)
         {
-            this->collision_ = this->robot_collision_check(this->other_robots_infos[i]);
-            if (this->collision_)
+            this->state_current_ = RobotState::FORWARDING;
+        }
+        else
+        {
+            for (size_t i = 0; i < this->other_robots_infos.size(); i++)
             {
-                RCLCPP_INFO_THROTTLE(get_logger(),*get_clock(), 1000, "collision occurs between %s and %s", this->namespace_name_.c_str(), other_robots_infos[i].namespace_name.c_str());
-                this->state_current_ = RobotState::WAITING;
-                break;
-            }
-            else
-            {
-                this->state_current_ = RobotState::FORWARDING;
+                this->collision_ = this->robot_collision_check(this->other_robots_infos[i]);
+                if (this->collision_)
+                {
+                    RCLCPP_INFO_THROTTLE(get_logger(),*get_clock(), 1000, "collision occurs between %s and %s", this->namespace_name_.c_str(), other_robots_infos[i].namespace_name.c_str());
+                    this->state_current_ = RobotState::WAITING;
+                    break;
+                }
+                else
+                {
+                    if (i == this->other_robots_infos.size() - 1)
+                    {
+                        this->state_current_ = RobotState::FORWARDING;
+                    }
+                    else
+                    {
+                        continue;
+                    }
+                }
             }
         }
+        
                         
         if (this->state_current_ != this->state_last_)
         {
@@ -427,7 +440,7 @@ namespace multi_robots_avoidance_action
         {
             RCLCPP_WARN(this->get_logger(), "current robot %s received a stale pose of robot %s, now_time: %f, pose_time: %f, delta_time: %f, threshold: %f",
                 this->namespace_name_.c_str(), namespace_name.c_str(), now_time, pose_time,  delta_time, this->pose_and_plan_timeout_);
-            return false;
+            return true;
         }
         else
         {
@@ -527,6 +540,8 @@ namespace multi_robots_avoidance_action
                         }
                         else
                         {
+                            i = size_i; // break i
+                            break;  // break j 
                             // 不满足time_tolerance,不记入结果。
                         }
                     }
@@ -556,6 +571,7 @@ namespace multi_robots_avoidance_action
                     index_j_selected = j - delta_j;
                     one_pair.first = index_i_selected;
                     one_pair.second = index_j_selected;
+                    RCLCPP_DEBUG(get_logger(), "push i: %zd and j: %zd",index_i_selected, index_j_selected);
                     compare_index_vec.push_back(one_pair);
                     break;
                 }    
@@ -711,14 +727,6 @@ namespace multi_robots_avoidance_action
                     RCLCPP_INFO(this->get_logger(), "robot %s timeout, delete...", robot_info.namespace_name.c_str());
                     RCLCPP_INFO(this->get_logger(), "now_time: %f, last_detected_time: %f, threshold: %f", 
                         now_time, last_time, this->pose_and_plan_timeout_);
-
-                    std::string namespace_name_delete = robot_info.namespace_name;
-                    
-                    // delete vec for pose_subs
-                    this->delete_element(namespace_name_delete, this->higher_priority_robot_pose_sub_vec_);
-
-                    // delete vec for plan_subs
-                    this->delete_element(namespace_name_delete, this->higher_priority_robot_plan_sub_vec_);
 
                     iter = this->other_robots_infos.erase(iter);
                 }
