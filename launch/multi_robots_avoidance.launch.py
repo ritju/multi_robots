@@ -9,6 +9,8 @@ def generate_launch_description():
     
     launch_description = LaunchDescription()
 
+    multi_robots_avoidance_log_level = LaunchConfiguration('multi_robots_avoidance_log_level', default='info')
+
     # get pkg path
     multi_robots_pkg_path = get_package_share_directory('nav2_multi_robots_avoidance')    
 
@@ -46,6 +48,7 @@ def generate_launch_description():
         name='multi_robots_avoidance',
         output='screen',
         parameters=[params_file_path, {"use_sim_time": False, "priority": priority, 'dummy_namespace_name': dummy_namespace_name}],
+        arguments=['--ros-args', '--log-level', ['multi_robots_avoidance:=', multi_robots_avoidance_log_level]],
         respawn=True,
     )
 
