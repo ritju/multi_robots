@@ -41,6 +41,10 @@ namespace multi_robots_avoidance_action
         // pub for cmd_vel_nav for smoother
         this->cmd_vel_nav_pub_ = this->create_publisher<geometry_msgs::msg::Twist>("cmd_vel_nav", 10);
 
+        // pub for other robots
+        this->other_robots_pub_ = this->create_publisher<capella_ros_msg::msg::RobotInfos>("/other_robots", rclcpp::QoS(5).best_effort());
+        this->timer_pub_other_robots_ = this->create_wall_timer(std::chrono::milliseconds(100), std::bind(&MultiRobotsAvoidanceAction::timer_pub_other_robots_callback, this));
+
         // sub for /robot_info
         rclcpp::CallbackGroup::SharedPtr cb_group1 = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
         rclcpp::SubscriptionOptions sub_opt1 = rclcpp::SubscriptionOptions();
@@ -120,8 +124,15 @@ namespace multi_robots_avoidance_action
         capella_ros_msg::msg::RobotInfo robot_info_msg;
         robot_info_msg.namespace_name = this->namespace_name_;
         robot_info_msg.priority = this->priority_;
+        robot_info_msg.pose = this->robot_pose_;
+        robot_info_msg.path = this->new_plan_output_.path;
         this->robot_info_pub_->publish(robot_info_msg);  
         RCLCPP_DEBUG(get_logger(), "timer_pub_robot_info_callback_ end");  
+    }
+
+    void MultiRobotsAvoidanceAction::timer_pub_other_robots_callback()
+    {
+        this->other_robots_pub_->publish(this->other_robots_infos_);
     }
 
     bool MultiRobotsAvoidanceAction::get_robot_pose()
@@ -248,6 +259,39 @@ namespace multi_robots_avoidance_action
     {
         RCLCPP_DEBUG(get_logger(), "higher_priority_robot_info_sub_callback_ begin");
         std::lock_guard<mutex_t> guard(*getMutex());
+
+        // pub other_robots_infos
+        if (robot_info.namespace_name == this->namespace_name_)
+        {
+            return;
+        }
+
+        if (this->other_robots_infos_.robots.size() == 0)
+        {
+            this->other_robots_infos_.robots.push_back(robot_info);
+        }
+        else
+        {
+            for (size_t i = 0; i < this->other_robots_infos_.robots.size(); i++)
+            {
+                if (this->other_robots_infos_.robots[i].namespace_name == robot_info.namespace_name)
+                {
+                    this->other_robots_infos_.robots[i] = robot_info;
+                }
+                else
+                {
+                    if (i == this->other_robots_infos_.robots.size() - 1)
+                    {
+                        this->other_robots_infos_.robots[i] = robot_info;
+                    }
+                    else
+                    {
+                        continue;
+                    }
+                }
+            }
+        }
+        
         bool need_stored = true;     
 
         if ((this->other_robots_infos.size() == 0))

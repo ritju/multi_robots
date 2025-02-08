@@ -11,6 +11,7 @@
 #include "builtin_interfaces/msg/time.hpp"
 
 #include "capella_ros_msg/msg/robot_info.hpp"
+#include "capella_ros_msg/msg/robot_infos.hpp"
 #include "capella_ros_msg/msg/robot_pose_with_namespace.hpp"
 #include "capella_ros_msg/msg/plan_with_namespace.hpp"
 
@@ -100,6 +101,10 @@ class MultiRobotsAvoidanceAction : public rclcpp::Node
                 rclcpp::Publisher<capella_ros_msg::msg::PlanWithNamespace>::SharedPtr new_plan_pub_;
                 rclcpp::Publisher<capella_ros_msg::msg::RobotInfo>::SharedPtr robot_info_pub_;
                 rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_nav_pub_;     // 转发cmd_vel_nav给smoother
+                rclcpp::Publisher<capella_ros_msg::msg::RobotInfos>::SharedPtr other_robots_pub_; // pub其它机器人的实时信息
+
+                capella_ros_msg::msg::RobotInfos other_robots_infos_; // 存储其它机器人的信息
+                rclcpp::TimerBase::SharedPtr timer_pub_other_robots_; // 定时发布其它机器人信息
                
                 // callbacks for subs
                 void higher_priority_robot_pose_sub_callback_(const capella_ros_msg::msg::RobotPoseWithNamespace &pose); 
@@ -146,6 +151,7 @@ class MultiRobotsAvoidanceAction : public rclcpp::Node
                 void timer_check_other_robots_online_state_callback_();
                 void timer_pub_robot_info_callback_();
                 void timer_pub_robot_pose_callback_();
+                void timer_pub_other_robots_callback();
 
                 // tf2
                 std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
