@@ -62,7 +62,7 @@ namespace multi_robots_avoidance_action
         rclcpp::CallbackGroup::SharedPtr cb_group3 = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
         rclcpp::SubscriptionOptions sub_opt3 = rclcpp::SubscriptionOptions();
         sub_opt3.callback_group = cb_group3;
-        this->robot_plan_sub_ = this->create_subscription<capella_ros_msg::msg::PlanWithNamespace>("plan_stamped", 20,
+        this->robot_plan_sub_ = this->create_subscription<capella_ros_msg::msg::PlanWithNamespace>("plan_stamped", 1,
                 std::bind(&MultiRobotsAvoidanceAction::higher_priority_robot_plan_sub_callback_, this, _1), sub_opt3);
 
         // sub for /cmd_vel_nav_
@@ -196,12 +196,17 @@ namespace multi_robots_avoidance_action
             RobotInfos& robot_info = this->other_robots_infos[i];
             if (pose.namespace_name == robot_info.namespace_name)
             {
-                robot_info.pose = pose.pose;
-                robot_info.time_last_detected = this->get_clock()->now();
+                auto now_time = now();
+                auto msg_time = rclcpp::Time(pose.pose.header.stamp);
+                auto delta_time = (now_time - msg_time).seconds();
+                RCLCPP_DEBUG(get_logger(), "robot: %s", pose.namespace_name.c_str());
+                RCLCPP_DEBUG(get_logger(), "now_time: %f", now_time.seconds());
+                RCLCPP_DEBUG(get_logger(), "pose-msg_time: %f", msg_time.seconds());
+                RCLCPP_DEBUG(get_logger(), "pose-delta_time: %f", delta_time);
 
-                double now_time = rclcpp::Time(robot_info.time_last_detected).seconds();
-                double plan_time = rclcpp::Time(pose.pose.header.stamp).seconds();
-                double delta_time = now_time - plan_time;
+                robot_info.pose = pose.pose;
+                robot_info.time_last_detected = now_time;
+
                 if (delta_time > this->pose_and_plan_timeout_)
                 {
                     RCLCPP_WARN(get_logger(), "The time of pose received from %s is too late, delta_time: %f", pose.namespace_name.c_str(), delta_time);
@@ -224,19 +229,24 @@ namespace multi_robots_avoidance_action
     void MultiRobotsAvoidanceAction::higher_priority_robot_plan_sub_callback_(const capella_ros_msg::msg::PlanWithNamespace &plan)
     {
         RCLCPP_DEBUG(get_logger(), "higher_priority_robot_plan_sub_callback_ begin");
+
         std::lock_guard<mutex_t> guard(*getMutex());
         for (size_t i = 0; i < this->other_robots_infos.size(); i++)
         {
             RobotInfos& robot_info = this->other_robots_infos[i];
             if (plan.namespace_name == robot_info.namespace_name)
             {
-                robot_info.path = plan.path;
-                robot_info.time_last_detected = this->get_clock()->now();
-                robot_info.time_last_detected_plan = robot_info.time_last_detected;
+                auto now_time = now();
+                auto msg_time = rclcpp::Time(plan.path.header.stamp);
+                auto delta_time = (now_time - msg_time).seconds();
+                RCLCPP_DEBUG(get_logger(), "robot: %s", plan.namespace_name.c_str());
+                RCLCPP_DEBUG(get_logger(), "now_time: %f", now_time.seconds());
+                RCLCPP_DEBUG(get_logger(), "plan-msg_time: %f", msg_time.seconds());
+                RCLCPP_DEBUG(get_logger(), "plan-delta_time: %f", delta_time);
 
-                double now_time = rclcpp::Time(robot_info.time_last_detected).seconds();
-                double plan_time = rclcpp::Time(plan.path.header.stamp).seconds();
-                double delta_time = now_time - plan_time;
+                robot_info.path = plan.path;
+                robot_info.time_last_detected = now_time;
+                robot_info.time_last_detected_plan = robot_info.time_last_detected;
                 if (delta_time > this->pose_and_plan_timeout_)
                 {
                     RCLCPP_WARN(get_logger(), "The time of plan received from %s is too late, delta_time: %f", plan.namespace_name.c_str(), delta_time);
@@ -756,13 +766,15 @@ namespace multi_robots_avoidance_action
             for (auto iter = this->other_robots_infos.begin(); iter != this->other_robots_infos.end();)
             {
                 RobotInfos& robot_info = *iter;
-                auto now_time = this->get_clock()->now().seconds();
+                auto now_time = now().seconds();
                 auto last_time = rclcpp::Time(robot_info.time_last_detected).seconds();
                 auto last_time_plan = rclcpp::Time(robot_info.time_last_detected_plan).seconds();
 
                 if((std::abs(now_time - last_time_plan) > this->pose_and_plan_timeout_) && robot_info.path.poses.size() != 0)
                 {
                     RCLCPP_INFO(get_logger(), "Robot %s's plan is timeout, assign empty value.", robot_info.namespace_name.c_str());
+                    RCLCPP_INFO(get_logger(), "plan msg time: %f", last_time_plan);
+                    RCLCPP_INFO(get_logger(), "delta_time: %f", std::abs(now_time - last_time_plan));
                     robot_info.path = nav_msgs::msg::Path();
                 }                
 

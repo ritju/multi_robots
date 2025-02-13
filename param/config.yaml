@@ -10,5 +10,5 @@
     frequency_pub_pose: 5
     frequency_check_online: 5
     frequency_pub_robot_info: 5
-    pose_and_plan_timeout: 1.0
+    pose_and_plan_timeout: 1.2
     time_tolerance: 0.1
