@@ -7,7 +7,6 @@ endif()
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
-find_package(nav2_common REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(tf2 REQUIRED)
@@ -17,6 +16,7 @@ find_package(geometry_msgs REQUIRED)
 find_package(builtin_interfaces REQUIRED)
 find_package(capella_ros_msg REQUIRED)
 find_package(rclcpp_components REQUIRED)
+find_package(nav2_common REQUIRED)
 
 nav2_package()
 
