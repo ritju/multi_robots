@@ -41,13 +41,41 @@ def generate_launch_description():
         print("Please declare CAPELLA_ROS_NAMESPACE!")
         dummy_namespace_name = 'mk'
 
+    collision_radius_check_threshold = 10.0
+    try:
+        if 'COLLISION_RADIUS_CHECK_THRESHOLD' in os.environ:
+            collision_radius_check_threshold = os.environ.get('COLLISION_RADIUS_CHECK_THRESHOLD')
+            print(f'get COLLISION_RADIUS_CHECK_THRESHOLD value {collision_radius_check_threshold} from os.environment.')
+        else:
+            print('using default COLLISION_RADIUS_CHECK_THRESHOLD value 10.0')
+            collision_radius_check_threshold = 10.0
+    except:
+        print("Please declare COLLISION_RADIUS_CHECK_THRESHOLD!")
+        collision_radius_check_threshold = 10.0
+
+    global_pose_filter_threshold = 2.82
+    try:
+        if 'GLOBAL_POSE_FILTER_THRESHOLD' in os.environ:
+            global_pose_filter_threshold = os.environ.get('GLOBAL_POSE_FILTER_THRESHOLD')
+            print(f'get GLOBAL_POSE_FILTER_THRESHOLD value {global_pose_filter_threshold} from os.environment.')
+        else:
+            print('using default GLOBAL_POSE_FILTER_THRESHOLD value 2.82')
+            global_pose_filter_threshold = 2.82
+    except:
+        print("Please declare GLOBAL_POSE_FILTER_THRESHOLD!")
+        global_pose_filter_threshold = 2.82
+
     # multi_robots_avoidance Node
     nav2_multi_robots_avoidance_node = Node(
         executable='multi_robots_avoidance',
         package='nav2_multi_robots_avoidance',
         name='multi_robots_avoidance',
         output='screen',
-        parameters=[params_file_path, {"use_sim_time": False, "priority": priority, 'dummy_namespace_name': dummy_namespace_name}],
+        parameters=[params_file_path, {"use_sim_time": False, "priority": priority, 
+                                       'dummy_namespace_name': dummy_namespace_name, 
+                                       'collision_radius_check_threshold': collision_radius_check_threshold, 
+                                       'global_pose_filter_threshold': global_pose_filter_threshold}
+                    ],
         arguments=['--ros-args', '--log-level', ['multi_robots_avoidance:=', multi_robots_avoidance_log_level]],
         respawn=True,
     )
