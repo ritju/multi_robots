@@ -90,7 +90,7 @@ class MultiRobotsAvoidanceAction : public rclcpp::Node
         
         private:
                 // subs
-                rclcpp::Subscription<capella_ros_msg::msg::RobotInfo>::SharedPtr              higher_priority_robot_info_sub_;           // 订阅高优先级机器人信息
+                rclcpp::Subscription<capella_ros_msg::msg::RobotInfo>::SharedPtr              robot_info_sub_;           // 订阅高优先级机器人信息
                 rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr                          current_robot_plan_sub_;                   // 订阅自身plan,增加时间戳
                 rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr                    current_robot_controller_vel_sub_;         // 订阅自身controller速度
                                 
@@ -109,7 +109,7 @@ class MultiRobotsAvoidanceAction : public rclcpp::Node
                 // callbacks for subs
                 void higher_priority_robot_pose_sub_callback_(const capella_ros_msg::msg::RobotPoseWithNamespace &pose); 
                 void higher_priority_robot_plan_sub_callback_(const capella_ros_msg::msg::PlanWithNamespace &plan);
-                void higher_priority_robot_info_sub_callback_(const capella_ros_msg::msg::RobotInfo &robot_info);
+                void robot_info_sub_callback_(const capella_ros_msg::msg::RobotInfo &robot_info);
                 void current_robot_plan_sub_callback_(const nav_msgs::msg::Path &plan);               
                 void current_robot_controller_vel_sub_callback_(const geometry_msgs::msg::Twist &controller_vel);
 
@@ -133,7 +133,7 @@ class MultiRobotsAvoidanceAction : public rclcpp::Node
                 
                 std::string namespace_name_;              // 机器人命名空间
                 
-                std::vector<RobotInfos> other_robots_infos;  // 需要检查的高优先级机器人信息
+                std::vector<RobotInfos> other_high_priority_robots_infos;  // 需要检查的高优先级机器人信息
                 RobotState state_current_, state_last_;      // 机器人当前、最近一次碰撞检测后执行状态
                 bool collision_;                             // 是否会发生碰撞
                 geometry_msgs::msg::Pose  current_pose_;     // 当前机器人的pose

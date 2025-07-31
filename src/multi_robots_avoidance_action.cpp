@@ -49,7 +49,7 @@ namespace multi_robots_avoidance_action
         rclcpp::CallbackGroup::SharedPtr cb_group1 = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
         rclcpp::SubscriptionOptions sub_opt1 = rclcpp::SubscriptionOptions();
         sub_opt1.callback_group = cb_group1;
-        this->higher_priority_robot_info_sub_ = this->create_subscription<capella_ros_msg::msg::RobotInfo>("/robot_info", 1, std::bind(&MultiRobotsAvoidanceAction::higher_priority_robot_info_sub_callback_, this, _1), sub_opt1);
+        this->robot_info_sub_ = this->create_subscription<capella_ros_msg::msg::RobotInfo>("/robot_info", 1, std::bind(&MultiRobotsAvoidanceAction::robot_info_sub_callback_, this, _1), sub_opt1);
 
         // sub for /robot_pose
         rclcpp::CallbackGroup::SharedPtr cb_group2 = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
@@ -77,7 +77,7 @@ namespace multi_robots_avoidance_action
         // sub for /plan 
         this->current_robot_plan_sub_ = this->create_subscription<nav_msgs::msg::Path>("plan", 1, std::bind(&MultiRobotsAvoidanceAction::current_robot_plan_sub_callback_, this, _1));
 
-        this->other_robots_infos = this->get_higher_priority_robots_infos();
+        this->other_high_priority_robots_infos = this->get_higher_priority_robots_infos();
     }
 
     MultiRobotsAvoidanceAction::~MultiRobotsAvoidanceAction()
@@ -191,9 +191,9 @@ namespace multi_robots_avoidance_action
     {
         RCLCPP_DEBUG(get_logger(), "higher_priority_robot_pose_sub_callback_ begin");
         std::lock_guard<mutex_t> guard(*getMutex());
-        for (size_t i = 0; i < this->other_robots_infos.size(); i++)
+        for (size_t i = 0; i < this->other_high_priority_robots_infos.size(); i++)
         {
-            RobotInfos& robot_info = this->other_robots_infos[i];
+            RobotInfos& robot_info = this->other_high_priority_robots_infos[i];
             if (pose.namespace_name == robot_info.namespace_name)
             {
                 auto now_time = now();
@@ -216,7 +216,7 @@ namespace multi_robots_avoidance_action
             }
             else
             {
-                if (i == this->other_robots_infos.size() - 1)
+                if (i == this->other_high_priority_robots_infos.size() - 1)
                 {
                     // RCLCPP_WARN(this->get_logger(), "robot %s received a pose msg, but it's namespace %s was not in the robot infos list",
                     //     this->namespace_name_.c_str(), pose.namespace_name.c_str());
@@ -231,9 +231,9 @@ namespace multi_robots_avoidance_action
         RCLCPP_DEBUG(get_logger(), "higher_priority_robot_plan_sub_callback_ begin");
 
         std::lock_guard<mutex_t> guard(*getMutex());
-        for (size_t i = 0; i < this->other_robots_infos.size(); i++)
+        for (size_t i = 0; i < this->other_high_priority_robots_infos.size(); i++)
         {
-            RobotInfos& robot_info = this->other_robots_infos[i];
+            RobotInfos& robot_info = this->other_high_priority_robots_infos[i];
             if (plan.namespace_name == robot_info.namespace_name)
             {
                 auto now_time = now();
@@ -255,7 +255,7 @@ namespace multi_robots_avoidance_action
             }
             else
             {
-                if (i == this->other_robots_infos.size() - 1)
+                if (i == this->other_high_priority_robots_infos.size() - 1)
                 {
                     // RCLCPP_WARN(this->get_logger(), "robot %s received a plan msg, but it's namespace %s was not in the robot infos list",
                     //     this->namespace_name_.c_str(), plan.namespace_name.c_str());
@@ -265,12 +265,12 @@ namespace multi_robots_avoidance_action
         RCLCPP_DEBUG(get_logger(), "higher_priority_robot_plan_sub_callback_ end");
     }
 
-    void MultiRobotsAvoidanceAction::higher_priority_robot_info_sub_callback_(const capella_ros_msg::msg::RobotInfo &robot_info)
+    void MultiRobotsAvoidanceAction::robot_info_sub_callback_(const capella_ros_msg::msg::RobotInfo &robot_info)
     {
-        RCLCPP_DEBUG(get_logger(), "higher_priority_robot_info_sub_callback_ begin");
+        RCLCPP_DEBUG(get_logger(), "robot_info_sub_callback_ begin");
         std::lock_guard<mutex_t> guard(*getMutex());
 
-        // pub other_robots_infos
+        // update other_robots_infos_
         if (robot_info.namespace_name == this->namespace_name_)
         {
             return;
@@ -292,7 +292,7 @@ namespace multi_robots_avoidance_action
                 {
                     if (i == this->other_robots_infos_.robots.size() - 1)
                     {
-                        this->other_robots_infos_.robots[i] = robot_info;
+                        this->other_robots_infos_.robots.push_back(robot_info);
                     }
                     else
                     {
@@ -304,7 +304,7 @@ namespace multi_robots_avoidance_action
         
         bool need_stored = true;     
 
-        if ((this->other_robots_infos.size() == 0))
+        if ((this->other_high_priority_robots_infos.size() == 0))
         {
             if (robot_info.priority > this->priority_)
             {
@@ -317,22 +317,22 @@ namespace multi_robots_avoidance_action
         }
         else
         {
-            for (size_t i = 0; i < this->other_robots_infos.size(); i++)
+            for (size_t i = 0; i < this->other_high_priority_robots_infos.size(); i++)
             {
                 if (robot_info.namespace_name == this->namespace_name_)
                 {
                     need_stored = false;
                     break;
                 }
-                else if (robot_info.namespace_name == this->other_robots_infos[i].namespace_name)
+                else if (robot_info.namespace_name == this->other_high_priority_robots_infos[i].namespace_name)
                 {
                     need_stored = false;
-                    this->other_robots_infos[i].time_last_detected = this->get_clock()->now();
+                    this->other_high_priority_robots_infos[i].time_last_detected = this->get_clock()->now();
                     break;
                 }
                 else
                 {
-                    if ((robot_info.priority > this->priority_) &&(i == (this->other_robots_infos.size() - 1)))
+                    if ((robot_info.priority > this->priority_) &&(i == (this->other_high_priority_robots_infos.size() - 1)))
                     {
                         need_stored = true;
                         break;
@@ -354,12 +354,12 @@ namespace multi_robots_avoidance_action
             ris.priority = this->priority_;
             ris.pose = geometry_msgs::msg::PoseStamped();
             ris.path = nav_msgs::msg::Path();
-            this->other_robots_infos.push_back(ris);
+            this->other_high_priority_robots_infos.push_back(ris);
         }
         else
         {
         }
-        RCLCPP_DEBUG(get_logger(), "higher_priority_robot_info_sub_callback_ end");
+        RCLCPP_DEBUG(get_logger(), "robot_info_sub_callback_ end");
     }
 
     void MultiRobotsAvoidanceAction::current_robot_controller_vel_sub_callback_(const geometry_msgs::msg::Twist &controller_vel)
@@ -367,26 +367,26 @@ namespace multi_robots_avoidance_action
         RCLCPP_DEBUG(get_logger(), "current_robot_controller_vel_sub_callback_ begin");
         std::lock_guard<mutex_t> guard(*getMutex());
         this->twist_controller_ = controller_vel;
-        RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 1000, "other_robots_infos.size: %zd", this->other_robots_infos.size());
+        RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 1000, "other_high_priority_robots_infos.size: %zd", this->other_high_priority_robots_infos.size());
         
-        if (this->other_robots_infos.size() == 0)
+        if (this->other_high_priority_robots_infos.size() == 0)
         {
             this->state_current_ = RobotState::FORWARDING;
         }
         else
         {
-            for (size_t i = 0; i < this->other_robots_infos.size(); i++)
+            for (size_t i = 0; i < this->other_high_priority_robots_infos.size(); i++)
             {
-                this->collision_ = this->robot_collision_check(this->other_robots_infos[i]);
+                this->collision_ = this->robot_collision_check(this->other_high_priority_robots_infos[i]);
                 if (this->collision_)
                 {
-                    RCLCPP_INFO_THROTTLE(get_logger(),*get_clock(), 1000, "collision occurs between %s and %s", this->namespace_name_.c_str(), other_robots_infos[i].namespace_name.c_str());
+                    RCLCPP_INFO_THROTTLE(get_logger(),*get_clock(), 1000, "collision occurs between %s and %s", this->namespace_name_.c_str(), other_high_priority_robots_infos[i].namespace_name.c_str());
                     this->state_current_ = RobotState::WAITING;
                     break;
                 }
                 else
                 {
-                    if (i == this->other_robots_infos.size() - 1)
+                    if (i == this->other_high_priority_robots_infos.size() - 1)
                     {
                         this->state_current_ = RobotState::FORWARDING;
                     }
@@ -477,7 +477,7 @@ namespace multi_robots_avoidance_action
     {
         RCLCPP_DEBUG(get_logger(), "get_higher_priority_robots_infos begin");  
         std::lock_guard<mutex_t> guard(*getMutex());
-        return this->other_robots_infos;
+        return this->other_high_priority_robots_infos;
         RCLCPP_DEBUG(get_logger(), "get_higher_priority_robots_infos end");  
     }
 
@@ -759,11 +759,11 @@ namespace multi_robots_avoidance_action
     {
         RCLCPP_DEBUG(get_logger(), "timer_check_other_robots_online_state_callback_ begin");
         std::lock_guard<mutex_t> guard(*getMutex());
-        size_t size = this->other_robots_infos.size();
+        size_t size = this->other_high_priority_robots_infos.size();
         if (size > 0)
         {
             // RCLCPP_INFO(get_logger(), "size: %zd", size);
-            for (auto iter = this->other_robots_infos.begin(); iter != this->other_robots_infos.end();)
+            for (auto iter = this->other_high_priority_robots_infos.begin(); iter != this->other_high_priority_robots_infos.end();)
             {
                 RobotInfos& robot_info = *iter;
                 auto now_time = now().seconds();
@@ -784,7 +784,7 @@ namespace multi_robots_avoidance_action
                     RCLCPP_INFO(this->get_logger(), "now_time: %f, last_detected_time: %f, threshold: %f", 
                         now_time, last_time, this->pose_and_plan_timeout_);
 
-                    iter = this->other_robots_infos.erase(iter);
+                    iter = this->other_high_priority_robots_infos.erase(iter);
                 }
                 else
                 {
